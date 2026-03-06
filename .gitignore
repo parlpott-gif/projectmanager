@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 数据文件（本地私有数据，不提交）
+data/
+data copy/
+
+# 调试遗留
+api_response.txt
+nul
+
+# 空文件夹
+newone/

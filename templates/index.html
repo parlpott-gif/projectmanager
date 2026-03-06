@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>硬件项目管理</title>
+  <link href="/static/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/static/style.css?v=14" rel="stylesheet">
+</head>
+<body>
+
+<!-- 顶部导航 -->
+<nav class="navbar navbar-light sticky-top" id="titlebar">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand fw-bold drag-region">
+      <i class="bi bi-cpu-fill me-2"></i>硬件项目管理
+    </span>
+    <!-- 拖动区域（中间填充） -->
+    <div class="drag-region flex-fill"></div>
+    <div class="d-flex align-items-center gap-3">
+      <button id="btn-update-costs" class="btn btn-outline-secondary btn-sm" onclick="updateAllCosts()">
+        <i class="bi bi-calculator me-1"></i>更新成本
+      </button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="syncData()">
+        <i class="bi bi-arrow-clockwise me-1"></i>同步总表
+      </button>
+      <!-- 窗口控制按钮（仅 WebView 模式下有效） -->
+      <div class="wm-btns ms-2">
+        <button class="wm-btn" onclick="wmMinimize()" title="最小化"><i class="bi bi-dash"></i></button>
+        <button class="wm-btn wm-close" onclick="wmClose()" title="关闭"><i class="bi bi-x"></i></button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Tab 导航 + 筛选栏 -->
+<div class="filter-bar">
+  <div class="container-fluid px-4">
+    <div class="d-flex align-items-center gap-4 flex-wrap">
+      <!-- 页面 Tab -->
+      <div class="page-tabs d-flex gap-1">
+        <button class="page-tab active" id="tab-projects" onclick="switchPage('projects')">
+          <i class="bi bi-kanban me-1"></i>项目列表
+        </button>
+        <button class="page-tab" id="tab-parts" onclick="switchPage('parts')">
+          <i class="bi bi-box-seam me-1"></i>器件库
+        </button>
+        <button class="page-tab" id="tab-stats" onclick="switchPage('stats')">
+          <i class="bi bi-bar-chart-line me-1"></i>统计
+        </button>
+        <button class="page-tab" id="tab-quick-export" onclick="switchPage('quick-export')">
+          <i class="bi bi-lightning-charge me-1"></i>快速导出
+        </button>
+        <button class="page-tab" id="tab-export-history" onclick="switchPage('export-history')">
+          <i class="bi bi-download me-1"></i>导出历史
+        </button>
+      </div>
+
+      <!-- 统一的搜索/筛选区域（根据页面动态切换内容） -->
+      <div id="filter-container" class="d-flex align-items-center gap-3 flex-wrap">
+
+        <!-- 项目列表页的搜索区块 -->
+        <div id="projects-filter-block" class="d-flex align-items-center gap-3 flex-wrap">
+          <div class="search-wrap">
+            <i class="bi bi-search"></i>
+            <input type="text" id="search-input" class="form-control form-control-sm" placeholder="搜索项目名称..." oninput="filterProjects()">
+          </div>
+          <div class="status-filters d-flex gap-2">
+            <button class="filter-btn active" data-status="all" onclick="setFilter(this, 'all')">全部</button>
+            <button class="filter-btn" data-status="待绘制" onclick="setFilter(this, '待绘制')">待绘制</button>
+            <button class="filter-btn" data-status="待打板" onclick="setFilter(this, '待打板')">待打板</button>
+            <button class="filter-btn" data-status="等板" onclick="setFilter(this, '等板')">等板</button>
+            <button class="filter-btn" data-status="待交付" onclick="setFilter(this, '待交付')">待交付</button>
+            <button class="filter-btn" data-status="已完成" onclick="setFilter(this, '已完成')">已完成</button>
+          </div>
+        </div>
+
+        <!-- 器件库页的搜索区块 -->
+        <div id="parts-filter-block" class="d-flex align-items-center gap-3 flex-wrap" style="display:none">
+          <div class="search-wrap">
+            <i class="bi bi-search"></i>
+            <input type="text" id="parts-search" class="form-control form-control-sm" placeholder="搜索器件..." oninput="filterParts()">
+          </div>
+          <div class="status-filters d-flex gap-2">
+            <button class="filter-btn active" data-pf="all" onclick="setPartsFilter(this,'all')">全部</button>
+            <button class="filter-btn" data-pf="shortage" onclick="setPartsFilter(this,'shortage')">缺货</button>
+            <button class="filter-btn" data-pf="ok" onclick="setPartsFilter(this,'ok')">充足</button>
+          </div>
+          <button class="btn btn-outline-secondary btn-sm ms-2" onclick="syncParts()">
+            <i class="bi bi-arrow-repeat me-1"></i>同步器件
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="batchPurchase()">
+            <i class="bi bi-box-arrow-in-down me-1"></i>一键入库
+          </button>
+        </div>
+
+        <!-- 快速导出页的阶段筛选区块 -->
+        <div id="export-filter-block" class="d-flex align-items-center gap-3 flex-wrap" style="display:none">
+          <div class="export-toolbar-title" style="font-size:0.9rem; font-weight:500; color:var(--text); margin-right:4px;">
+            <i class="bi bi-funnel me-1"></i>选择阶段:
+          </div>
+          <div class="stage-filter-group" style="margin-bottom:0; gap:8px;">
+            <label class="stage-filter-item" style="margin-bottom:0;">
+              <input type="checkbox" name="stage" value="待绘制" onchange="onStageFilterChange()">
+              <span>待绘制</span>
+            </label>
+            <label class="stage-filter-item" style="margin-bottom:0;">
+              <input type="checkbox" name="stage" value="待打板" onchange="onStageFilterChange()">
+              <span>待打板</span>
+            </label>
+            <label class="stage-filter-item" style="margin-bottom:0;">
+              <input type="checkbox" name="stage" value="等板" onchange="onStageFilterChange()">
+              <span>等板</span>
+            </label>
+            <label class="stage-filter-item" style="margin-bottom:0;">
+              <input type="checkbox" name="stage" value="待交付" onchange="onStageFilterChange()">
+              <span>待交付</span>
+            </label>
+            <label class="stage-filter-item" style="margin-bottom:0;">
+              <input type="checkbox" name="stage" value="已完成" onchange="onStageFilterChange()">
+              <span>已完成</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- 主内容 -->
+<div class="main-content">
+  <div class="container-fluid px-4">
+
+    <!-- ══ 项目页 ══ -->
+    <div id="page-projects">
+      <div id="loading" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-3 text-muted">正在读取总表...</p>
+      </div>
+      <div id="empty-state" class="empty-state d-none">
+        <i class="bi bi-inbox display-1 text-muted"></i>
+        <h5 class="mt-3 text-muted">总表暂无数据</h5>
+        <p class="text-muted small">通过 Claude Code 完成硬件项目设计后，数据会自动同步到这里</p>
+        <button class="btn btn-primary mt-2" onclick="syncData()">
+          <i class="bi bi-arrow-clockwise me-1"></i>立即同步
+        </button>
+      </div>
+      <div id="project-table-wrap" class="d-none">
+        <table class="project-table">
+          <colgroup>
+            <col style="width:45px">
+            <col style="width:140px">
+            <col style="width:90px">
+            <col style="width:65px">
+            <col style="width:65px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:65px">
+            <col style="width:50px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th style="text-align:center">编号</th>
+              <th>系统名</th>
+              <th>交付类型</th>
+              <th>总价</th>
+              <th>预付款</th>
+              <th>硬件成本</th>
+              <th>日期</th>
+              <th>阶段</th>
+              <th>编辑</th>
+            </tr>
+          </thead>
+          <tbody id="project-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ 统计页 ══ -->
+    <div id="page-stats" style="display:none">
+      <div class="stats-page-wrap">
+        <!-- 概览卡片 -->
+        <div class="stats-overview-row">
+          <div class="stats-card">
+            <div class="stats-card-label"><i class="bi bi-layers me-1"></i>项目总数</div>
+            <div class="stats-card-value" id="stat-total">0</div>
+            <div class="stats-card-sub">个项目</div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-card-label"><i class="bi bi-currency-yen me-1"></i>总额</div>
+            <div class="stats-card-value" id="stat-price">0</div>
+            <div class="stats-card-sub">元</div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-card-label text-success-light"><i class="bi bi-wallet2 me-1"></i>已收</div>
+            <div class="stats-card-value text-success" id="stat-prepay">0</div>
+            <div class="stats-card-sub">元</div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-card-label"><i class="bi bi-calendar3 me-1"></i>最活跃日期</div>
+            <div class="stats-card-value" id="stats-busiest-day">—</div>
+            <div class="stats-card-sub" id="stats-busiest-day-count"></div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-card-label"><i class="bi bi-trophy me-1"></i>最高收益日</div>
+            <div class="stats-card-value" id="stats-richest-day">—</div>
+            <div class="stats-card-sub" id="stats-richest-day-amount"></div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-card-label"><i class="bi bi-calendar-check me-1"></i>有记录天数</div>
+            <div class="stats-card-value" id="stats-total-days">—</div>
+            <div class="stats-card-sub">天（含已填日期）</div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-card-label"><i class="bi bi-graph-up me-1"></i>平均每单</div>
+            <div class="stats-card-value" id="stats-avg-price">—</div>
+            <div class="stats-card-sub">元</div>
+          </div>
+        </div>
+
+        <!-- 每日明细表格 -->
+        <div class="stats-table-wrap mt-4">
+          <div class="stats-section-title"><i class="bi bi-table me-2"></i>每日明细</div>
+          <table class="project-table stats-table">
+            <thead>
+              <tr>
+                <th style="width:120px">日期</th>
+                <th style="width:70px;text-align:center">单子数</th>
+                <th style="width:110px;text-align:right">总价合计</th>
+                <th style="width:110px;text-align:right">预付合计</th>
+                <th>项目明细</th>
+              </tr>
+            </thead>
+            <tbody id="stats-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 通用导出系统页 ══ -->
+    <div id="page-quick-export" style="display:none">
+      <div class="universal-export-wrap">
+        <!-- 页面标题 -->
+        <div class="universal-export-header mb-4">
+          <h5 class="mb-2"><i class="bi bi-lightning-charge me-2"></i>通用导出系统</h5>
+          <p class="text-muted small">在上方选择项目阶段，灵活选择导出格式</p>
+        </div>
+
+        <!-- 导出类型选择 -->
+        <div class="export-step-section mb-4">
+          <div class="export-step-title">
+            <span class="step-number">①</span>
+            <span>选择导出类型</span>
+          </div>
+          <div class="export-type-group">
+            <label class="export-type-item">
+              <input type="radio" name="export-type" value="pcb" onchange="onExportTypeChange('pcb')" checked>
+              <div class="export-type-content">
+                <div class="export-type-name">PCB制板文件 (ZIP)</div>
+                <div class="export-type-desc">用于发送给制板厂，仅导出+PCB制板文件.zip</div>
+                <div class="export-type-info">ℹ️ 当前有 <span id="pcb-count">0</span> 个项目包含PCB文件</div>
+              </div>
+            </label>
+            <label class="export-type-item">
+              <input type="radio" name="export-type" value="docx" onchange="onExportTypeChange('docx')">
+              <div class="export-type-content">
+                <div class="export-type-name">功能元器件标签 (DOCX)</div>
+                <div class="export-type-desc">打印成A4纸的项目分类标签，包含：编号、项目名、元器件、功能</div>
+                <div class="export-type-info">ℹ️ 当前有 <span id="docx-count">0</span> 个项目可导出</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 项目选择 -->
+        <div class="export-step-section mb-4">
+          <div class="export-step-title">
+            <span class="step-number">②</span>
+            <span>选择要导出的项目</span>
+          </div>
+          <div class="export-step-hint">
+            共 <span id="filtered-project-count">0</span> 个项目符合条件
+          </div>
+
+          <!-- 加载中 -->
+          <div id="universal-export-loading" class="text-center py-4" style="display:none">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted small">正在加载项目...</p>
+          </div>
+
+          <!-- 空状态 -->
+          <div id="universal-export-empty" class="empty-state" style="display:none">
+            <i class="bi bi-inbox display-1 text-muted"></i>
+            <h6 class="mt-3 text-muted">没有符合条件的项目</h6>
+            <p class="text-muted small">请选择其他阶段或导出类型</p>
+          </div>
+
+          <!-- 项目列表 -->
+          <div id="universal-export-list" class="universal-export-list"></div>
+        </div>
+
+        <!-- 导出按钮 -->
+        <div class="export-action-section">
+          <button id="btn-universal-export" class="btn btn-primary btn-lg" onclick="exportUniversal()" disabled>
+            <i class="bi bi-download me-2"></i>导出 (<span id="selected-projects-count">0</span> 个项目)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 导出历史页 ══ -->
+    <div id="page-export-history" style="display:none">
+      <div class="export-history-wrap">
+        <div class="export-history-header d-flex justify-content-between align-items-center mb-4">
+          <div>
+            <h5 class="mb-3"><i class="bi bi-download me-2"></i>导出历史</h5>
+            <div class="export-history-filter d-flex gap-2">
+              <button class="filter-btn active" onclick="loadExportHistory(null)">全部</button>
+              <button class="filter-btn" onclick="loadExportHistory('pcb')">PCB导出</button>
+              <button class="filter-btn" onclick="loadExportHistory('docx')">DOCX导出</button>
+            </div>
+          </div>
+          <button class="btn btn-outline-danger btn-sm" id="btn-clear-history" onclick="clearAllExportHistory()">
+            <i class="bi bi-trash me-1"></i>清空所有记录
+          </button>
+        </div>
+        <div id="export-history-loading" class="text-center py-5" style="display:none">
+          <div class="spinner-border text-primary" role="status"></div>
+          <p class="mt-3 text-muted">正在加载导出记录...</p>
+        </div>
+        <div id="export-history-empty" class="empty-state" style="display:none">
+          <i class="bi bi-inbox display-1 text-muted"></i>
+          <h5 class="mt-3 text-muted">暂无导出记录</h5>
+          <p class="text-muted small">点击项目右侧「编辑」按钮，然后在文件列表中选择文件并点击「导出为ZIP」</p>
+        </div>
+        <div id="export-history-list" class="export-history-list"></div>
+      </div>
+    </div>
+
+    <!-- ══ 器件库页 ══ -->
+    <div id="page-parts" style="display:none">
+      <div id="parts-loading" class="text-center py-5" style="display:none">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-3 text-muted">正在加载器件库...</p>
+      </div>
+      <div id="parts-empty" class="empty-state" style="display:none">
+        <i class="bi bi-box display-1 text-muted"></i>
+        <h5 class="mt-3 text-muted">器件库为空</h5>
+        <p class="text-muted small">点击「同步器件」从项目中导入器件</p>
+        <button class="btn btn-primary mt-2" onclick="syncParts()">
+          <i class="bi bi-arrow-repeat me-1"></i>同步器件
+        </button>
+      </div>
+      <div id="parts-table-wrap">
+        <table class="project-table parts-table">
+          <thead>
+            <tr>
+              <th style="width:180px">器件名</th>
+              <th style="width:70px;text-align:center">库存</th>
+              <th style="width:70px;text-align:center">需求</th>
+              <th style="width:80px;text-align:center">差额</th>
+              <th>需求来源项目</th>
+              <th style="width:280px">采购入库</th>
+            </tr>
+          </thead>
+          <tbody id="parts-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 侧边栏遮罩 -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- 侧边栏 -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div>
+      <h5 class="sidebar-title mb-1" id="sidebar-name"></h5>
+      <span class="badge status-badge" id="sidebar-status-badge"></span>
+    </div>
+    <button class="btn-close-sidebar" onclick="closeSidebar()">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
+
+  <div class="sidebar-body">
+    <!-- 商务信息 -->
+    <div class="sidebar-section">
+      <h6 class="section-label"><i class="bi bi-briefcase me-2"></i>商务信息</h6>
+      <div class="biz-grid">
+        <div class="biz-field" style="grid-column: 1 / -1">
+          <label>交付类型</label>
+          <select id="edit-deliverable" class="form-select form-select-sm">
+            <option value="">未选择</option>
+            <option value="实物">实物</option>
+            <option value="面包板实物">面包板实物</option>
+            <option value="实物+仿真">实物+仿真</option>
+            <option value="仿真">仿真</option>
+            <option value="实物+论文">实物+论文</option>
+            <option value="仿真+论文">仿真+论文</option>
+            <option value="实物+仿真+论文">实物+仿真+论文</option>
+          </select>
+        </div>
+        <div class="biz-field">
+          <label>总价（元）</label>
+          <input type="number" id="edit-price" class="form-control form-control-sm" placeholder="0">
+        </div>
+        <div class="biz-field">
+          <label>预付款（元）</label>
+          <input type="number" id="edit-prepay" class="form-control form-control-sm" placeholder="0">
+        </div>
+        <div class="biz-field">
+          <label>日期</label>
+          <input type="date" id="edit-date" class="form-control form-control-sm">
+        </div>
+        <div class="biz-field">
+          <label>阶段</label>
+          <select id="edit-status" class="form-select form-select-sm">
+            <option value="待绘制">待绘制</option>
+            <option value="待打板">待打板</option>
+            <option value="等板">等板</option>
+            <option value="待交付">待交付</option>
+            <option value="已完成">已完成</option>
+          </select>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-primary btn-sm flex-fill" onclick="saveProject()">
+          <i class="bi bi-check2 me-1"></i>保存
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="openFolder()">
+          <i class="bi bi-folder2-open me-1"></i>打开文件夹
+        </button>
+      </div>
+    </div>
+
+    <!-- 预报价 -->
+    <div class="sidebar-section">
+      <div class="collapsible-header" onclick="toggleSection(this)">
+        <h6 class="section-label mb-0"><i class="bi bi-calculator me-2"></i>预报价（硬件成本估算）</h6>
+        <i class="bi bi-chevron-down toggle-icon"></i>
+      </div>
+      <div class="collapsible-body">
+        <div id="estimate-wrap">
+          <button class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="loadEstimate()">
+            <i class="bi bi-calculator me-1"></i>计算硬件成本
+          </button>
+          <div id="estimate-result" style="display:none">
+            <div class="estimate-summary">
+              <span class="estimate-label">估算硬件成本</span>
+              <span class="estimate-total" id="estimate-total">¥0</span>
+            </div>
+            <div id="estimate-missing-wrap" style="display:none" class="estimate-missing">
+              <i class="bi bi-exclamation-triangle me-1"></i>
+              <span id="estimate-missing-text"></span>无单价记录，未计入
+            </div>
+            <table class="estimate-table">
+              <thead>
+                <tr>
+                  <th>器件</th>
+                  <th style="text-align:center">数量</th>
+                  <th style="text-align:right">单价</th>
+                  <th style="text-align:right">小计</th>
+                </tr>
+              </thead>
+              <tbody id="estimate-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 元器件 -->
+    <div class="sidebar-section">
+      <div class="collapsible-header open" onclick="toggleSection(this)">
+        <h6 class="section-label mb-0"><i class="bi bi-cpu me-2"></i>元器件清单</h6>
+        <i class="bi bi-chevron-down toggle-icon"></i>
+      </div>
+      <div class="collapsible-body show">
+        <div id="sidebar-components" class="component-list"></div>
+      </div>
+    </div>
+
+    <!-- 功能 -->
+    <div class="sidebar-section">
+      <div class="collapsible-header" onclick="toggleSection(this)">
+        <h6 class="section-label mb-0"><i class="bi bi-list-check me-2"></i>功能列表</h6>
+        <i class="bi bi-chevron-down toggle-icon"></i>
+      </div>
+      <div class="collapsible-body">
+        <div id="sidebar-functions" class="function-list"></div>
+      </div>
+    </div>
+
+    <!-- 文件 -->
+    <div class="sidebar-section">
+      <div class="collapsible-header" onclick="toggleSection(this)">
+        <h6 class="section-label mb-0"><i class="bi bi-file-earmark me-2"></i>项目文件</h6>
+        <i class="bi bi-chevron-down toggle-icon"></i>
+      </div>
+      <div class="collapsible-body">
+        <!-- 上传目录选择区域 -->
+        <div class="mb-3">
+          <label class="form-label small mb-2">上传目录：</label>
+          <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="upload-dir" id="upload-dir-hardware" value="硬件" checked>
+            <label class="btn btn-outline-secondary btn-sm" for="upload-dir-hardware">
+              <i class="bi bi-cpu me-1"></i>硬件
+            </label>
+            <input type="radio" class="btn-check" name="upload-dir" id="upload-dir-demo" value="演示">
+            <label class="btn btn-outline-secondary btn-sm" for="upload-dir-demo">
+              <i class="bi bi-play-circle me-1"></i>演示
+            </label>
+          </div>
+        </div>
+        <!-- 上传按钮区域 -->
+        <div class="mb-2">
+          <button id="btn-upload-file" class="btn btn-outline-secondary btn-sm w-100"
+            onclick="document.getElementById('file-upload-input').click()">
+            <i class="bi bi-upload me-1"></i>上传文件
+          </button>
+          <!-- 隐藏的文件选择器，multiple 支持多文件 -->
+          <input type="file" id="file-upload-input" multiple style="display:none"
+            accept=".zip,.pdf,.jpg,.jpeg,.png,.gif,.bmp,.mp4,.mov,.avi,.mkv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.md,.txt,.csv,.sch,.pcb,.dwg,.dxf,.step,.stl,.epro2"
+            onchange="uploadFiles(this)">
+        </div>
+        <!-- 导出按钮区域 -->
+        <div id="export-section" style="display:none">
+          <button id="btn-quick-export-pcb" class="btn btn-primary btn-sm w-100 mb-2" onclick="quickExportPCBFiles()" style="display:none">
+            <i class="bi bi-lightning-charge me-1"></i>快速导出制板文件
+          </button>
+          <button id="btn-export-files" class="btn btn-outline-primary btn-sm w-100" onclick="exportSelectedFiles()">
+            <i class="bi bi-download me-1"></i>导出已选文件
+          </button>
+          <small class="text-muted d-block mt-1">已选 <span id="export-count">0</span> 个文件</small>
+        </div>
+        <div id="sidebar-files" class="file-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="toast" class="toast align-items-center border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="toast-msg"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/bootstrap.bundle.min.js"></script>
+<script src="/static/app.js?v=14"></script>
+</body>
+</html>
